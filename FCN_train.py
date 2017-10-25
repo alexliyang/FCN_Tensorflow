@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import utils
 
+# 定义命令行参数，然后tensorflow会解析这些flags, 如果不给定参数，则使用默认值
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
 tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
@@ -68,41 +69,38 @@ def segmentation(image, keep_prob):
     Parameters
     ----------
         image: 输入图像，每个通道的像素值为0到255
-        keep_prob:
+        keep_prob: 防止过拟合的dropout参数
     Returns
     -------
 
     """
     print("setting up vgg initialized conv layers ...")
     model_data = utils.get_model_data(FLAGS.model_dir)
-
+    # vgg模型的权重值
+    weights = np.squeeze(model_data['layers'])
+    # 计算图片像素值的均值, 然后对图像加上均值
     mean = model_data['normalization'][0][0][0]
     mean_pixel = np.mean(mean, axis=(0, 1))
-
-    weights = np.squeeze(model_data['layers'])
-
     processed_image = utils.process_image(image, mean_pixel)
-
-    with tf.variable_scope("inference"):
+    # 共享变量名空间-segmentation
+    with tf.variable_scope("segmentation"):
         image_net = vgg_net(weights, processed_image)
         conv_final_layer = image_net["conv5_3"]
 
         pool5 = utils.max_pool_2x2(conv_final_layer)
-
-        W6 = utils.weight_variable([7, 7, 512, 4096], name="W6")
+        # 全连接层用卷积层来代替
+        W6 = utils.weight_variable([7, 7, 512, 4096], name = "W6")
         b6 = utils.bias_variable([4096], name="b6")
         conv6 = utils.conv2d_basic(pool5, W6, b6)
         relu6 = tf.nn.relu(conv6, name="relu6")
-        if FLAGS.debug:
-            utils.add_activation_summary(relu6)
+        # 随机去掉一些神经元防止过拟合
         relu_dropout6 = tf.nn.dropout(relu6, keep_prob=keep_prob)
 
         W7 = utils.weight_variable([1, 1, 4096, 4096], name="W7")
         b7 = utils.bias_variable([4096], name="b7")
         conv7 = utils.conv2d_basic(relu_dropout6, W7, b7)
         relu7 = tf.nn.relu(conv7, name="relu7")
-        if FLAGS.debug:
-            utils.add_activation_summary(relu7)
+
         relu_dropout7 = tf.nn.dropout(relu7, keep_prob=keep_prob)
 
         W8 = utils.weight_variable([1, 1, 4096, NUM_OF_CLASSESS], name="W8")
@@ -128,7 +126,108 @@ def segmentation(image, keep_prob):
         W_t3 = utils.weight_variable([16, 16, NUM_OF_CLASSESS, deconv_shape2[3].value], name="W_t3")
         b_t3 = utils.bias_variable([NUM_OF_CLASSESS], name="b_t3")
         conv_t3 = utils.conv2d_transpose_strided(fuse_2, W_t3, b_t3, output_shape=deconv_shape3, stride=8)
-
+        # 预测结果层
         annotation_pred = tf.argmax(conv_t3, dimension=3, name="prediction")
 
     return tf.expand_dims(annotation_pred, dim=3), conv_t3
+
+
+def train(loss_val, var_list):
+    """
+    定义采用那种算法的优化器
+    Parameters
+    ----------
+        loss_val: 计算的loss值
+        var_list: 需要计算梯度的变量
+    """
+    # 采用Adam算法的优化器
+    optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
+    # 以下可以合并成一步minimize
+    grads = optimizer.compute_gradients(loss_val, var_list=var_list)
+    return optimizer.apply_gradients(grads)
+
+
+def main(argv = None):
+    """
+    tensorflow 中的app.run会先解析flag，然后执行main函数
+    """
+    keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
+    image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
+    annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
+
+    pred_annotation, logits = inference(image, keep_probability)
+    tf.summary.image("input_image", image, max_outputs=2)
+    tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=2)
+    tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=2)
+    loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
+                                                                          labels=tf.squeeze(annotation, squeeze_dims=[3]),
+                                                                          name="entropy")))
+    tf.summary.scalar("entropy", loss)
+
+    trainable_var = tf.trainable_variables()
+    if FLAGS.debug:
+        for var in trainable_var:
+            utils.add_to_regularization_and_summary(var)
+    train_op = train(loss, trainable_var)
+
+    print("Setting up summary op...")
+    summary_op = tf.summary.merge_all()
+
+    print("Setting up image reader...")
+    train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
+    print(len(train_records))
+    print(len(valid_records))
+
+    print("Setting up dataset reader")
+    image_options = {'resize': True, 'resize_size': IMAGE_SIZE}
+    if FLAGS.mode == 'train':
+        train_dataset_reader = dataset.BatchDatset(train_records, image_options)
+    validation_dataset_reader = dataset.BatchDatset(valid_records, image_options)
+
+    sess = tf.Session()
+
+    print("Setting up Saver...")
+    saver = tf.train.Saver()
+    summary_writer = tf.summary.FileWriter(FLAGS.logs_dir, sess.graph)
+
+    sess.run(tf.global_variables_initializer())
+    ckpt = tf.train.get_checkpoint_state(FLAGS.logs_dir)
+    if ckpt and ckpt.model_checkpoint_path:
+        saver.restore(sess, ckpt.model_checkpoint_path)
+        print("Model restored...")
+
+    if FLAGS.mode == "train":
+        for itr in xrange(MAX_ITERATION):
+            train_images, train_annotations = train_dataset_reader.next_batch(FLAGS.batch_size)
+            feed_dict = {image: train_images, annotation: train_annotations, keep_probability: 0.85}
+
+            sess.run(train_op, feed_dict=feed_dict)
+
+            if itr % 10 == 0:
+                train_loss, summary_str = sess.run([loss, summary_op], feed_dict=feed_dict)
+                print("Step: %d, Train_loss:%g" % (itr, train_loss))
+                summary_writer.add_summary(summary_str, itr)
+
+            if itr % 500 == 0:
+                valid_images, valid_annotations = validation_dataset_reader.next_batch(FLAGS.batch_size)
+                valid_loss = sess.run(loss, feed_dict={image: valid_images, annotation: valid_annotations,
+                                                       keep_probability: 1.0})
+                print("%s ---> Validation_loss: %g" % (datetime.datetime.now(), valid_loss))
+                saver.save(sess, FLAGS.logs_dir + "model.ckpt", itr)
+
+    elif FLAGS.mode == "visualize":
+        valid_images, valid_annotations = validation_dataset_reader.get_random_batch(FLAGS.batch_size)
+        pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
+                                                    keep_probability: 1.0})
+        valid_annotations = np.squeeze(valid_annotations, axis=3)
+        pred = np.squeeze(pred, axis=3)
+
+        for itr in range(FLAGS.batch_size):
+            utils.save_image(valid_images[itr].astype(np.uint8), FLAGS.logs_dir, name="inp_" + str(5+itr))
+            utils.save_image(valid_annotations[itr].astype(np.uint8), FLAGS.logs_dir, name="gt_" + str(5+itr))
+            utils.save_image(pred[itr].astype(np.uint8), FLAGS.logs_dir, name="pred_" + str(5+itr))
+            print("Saved image: %d" % itr)
+
+
+if __name__ == "__main__":
+    tf.app.run()

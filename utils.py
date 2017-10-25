@@ -52,7 +52,15 @@ def get_variable(weights, name):
     return var
 
 
-def weight_variable(shape, stddev=0.02, name=None):
+def weight_variable(shape, stddev = 0.02, name=None):
+    """
+    通过标准差为0.02，均值为0的正态分布初始化卷积层变量
+    Parameters
+    ----------
+        shape: 变量的维度
+        stddev: 正态分布的标准差
+        name: 变量的名字
+    """
     # print(shape)
     initial = tf.truncated_normal(shape, stddev=stddev)
     if name is None:
@@ -62,7 +70,15 @@ def weight_variable(shape, stddev=0.02, name=None):
 
 
 def bias_variable(shape, name=None):
-    initial = tf.constant(0.0, shape=shape)
+    """
+    通过常数值0初始化卷积层变量
+    Parameters
+    ----------
+        shape: 变量的维度
+        stddev: 正态分布的标准差
+        name: 变量的名字
+    """
+    initial = tf.constant(0.0, shape = shape)
     if name is None:
         return tf.Variable(initial)
     else:
@@ -109,7 +125,20 @@ def conv2d_strided(x, W, b):
     return tf.nn.bias_add(conv, b)
 
 
-def conv2d_transpose_strided(x, W, b, output_shape=None, stride = 2):
+def conv2d_transpose_strided(x, W, b, output_shape = None, stride = 2):
+    """
+    实现反向卷积层
+    Parameters
+    ----------
+        x: 需要反卷积处理的图像
+        W: 反卷积的filter
+        b: 反卷积的bias
+        output_shape: 确定反卷积输出的维度
+        stride: 反卷积的步长
+    Returns
+    -------
+        反卷积的feature map
+    """
     # print x.get_shape()
     # print W.get_shape()
     if output_shape is None:
@@ -181,10 +210,24 @@ def batch_norm(x, n_out, phase_train, scope='bn', decay=0.9, eps=1e-5):
 
 
 def process_image(image, mean_pixel):
+    """
+    图片处理前减去均值，归一化处理
+    Parameters
+    ----------
+        image: 输入的图像
+        mean_pixel: 图像的均值
+    """
     return image - mean_pixel
 
 
 def unprocess_image(image, mean_pixel):
+    """
+        加上均值，显示图片
+        Parameters
+        ----------
+            image: 输入的图像
+            mean_pixel: 图像的均值
+        """
     return image + mean_pixel
 
 
