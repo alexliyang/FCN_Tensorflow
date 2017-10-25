@@ -8,7 +8,6 @@ tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
 tf.flags.DEFINE_string("data_dir", "Data_zoo/MIT_SceneParsing/", "path to dataset")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
-tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize")
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
@@ -51,16 +50,15 @@ def vgg_net(weights, image):
             kernels, bias = weights[i][0][0][0][0]
             # matconvnet: weights are [width, height, in_channels, out_channels]
             # tensorflow: weights are [height, width, in_channels, out_channels]
-            # 需要做个transpose变化调整width和height的位置
+            # tensorflow和mat的卷积核格式不一样，需要做个transpose变换
             kernels = utils.get_variable(np.transpose(kernels, (1, 0, 2, 3)), name=name + "_w")
             bias = utils.get_variable(bias.reshape(-1), name = name + "_b")
             current = utils.conv2d_basic(current, kernels, bias)
         elif kind == 'relu':
             current = tf.nn.relu(current, name=name)
-            if FLAGS.debug:
-                utils.add_activation_summary(current)
         elif kind == 'pool':
             current = utils.avg_pool_2x2(current)
         net[name] = current
-
     return net
+
+

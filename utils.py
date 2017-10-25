@@ -95,7 +95,7 @@ def get_tensor_size(tensor):
 
 def conv2d_basic(x, W, bias):
     """
-    对输入图像计算卷积层
+    对输入图像计算卷积层，步长为[1, 1, 1, 1]
     Parameters
     ----------
         x: 输入的图像
@@ -103,13 +103,27 @@ def conv2d_basic(x, W, bias):
         bias: 卷积层的偏差项
     Returns
     -------
-        经过处理之后的卷积
+        经过卷积处理之后的feature map
     """
+    # strides为四维的步长tensor
+    # padding为SAME表示卷积核可以在图像边缘，输出的map和输入的图像大小则一致
+    # 输入图像的tensor为四维，包括图像数量batch, 图像高度，图像宽度，图像通道数
     conv = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding="SAME")
     return tf.nn.bias_add(conv, bias)
 
 
 def conv2d_strided(x, W, b):
+    """
+        对输入图像计算卷积层，步长为[1, 2, 2, 1]
+        Parameters
+        ----------
+            x: 输入的图像
+            W: 计算卷积的kernel
+            bias: 卷积层的偏差项
+        Returns
+        -------
+            经过卷积处理之后的feature map
+        """
     conv = tf.nn.conv2d(x, W, strides=[1, 2, 2, 1], padding="SAME")
     return tf.nn.bias_add(conv, b)
 
@@ -132,10 +146,28 @@ def leaky_relu(x, alpha=0.0, name=""):
 
 
 def max_pool_2x2(x):
+    """
+    计算2*2的最大池化层, 步长为2
+    Parameters
+    ----------
+        x: 卷积层输出的feature map
+    Returns
+    -------
+        池化层输出的feature map
+    """
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
 
 def avg_pool_2x2(x):
+    """
+    计算2*2的平均池化层, 步长为2
+    Parameters
+    ----------
+        x: 卷积层输出的feature map
+    Returns
+    -------
+        池化层输出的feature map
+    """
     return tf.nn.avg_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
 
