@@ -304,12 +304,25 @@ def add_to_regularization_and_summary(var):
 
 
 def add_activation_summary(var):
+    """
+    通过summary记录监视变量，然后通过TensorBoard实现数据可视化
+    Parameters
+    ----------
+        var: 需要记录的激活函数变量
+    """
     if var is not None:
         tf.summary.histogram(var.op.name + "/activation", var)
         tf.summary.scalar(var.op.name + "/sparsity", tf.nn.zero_fraction(var))
 
 
 def add_gradient_summary(grad, var):
+    """
+    通过summary记录监视变量，然后通过TensorBoard实现数据可视化
+    Parameters
+    ----------
+        grad: 变量的梯度值
+        var: 通过summary记录监视变量
+    """
     if grad is not None:
         tf.summary.histogram(var.op.name + "/gradient", grad)
         tf.summary.histogram(var.op.name + "/gradient", grad)

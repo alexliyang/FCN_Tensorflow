@@ -57,6 +57,8 @@ def vgg_net(weights, image):
             current = utils.conv2d_basic(current, kernels, bias)
         elif kind == 'relu':
             current = tf.nn.relu(current, name=name)
+            if FLAGS.debug:
+                utils.add_activation_summary(current)
         elif kind == 'pool':
             current = utils.avg_pool_2x2(current)
         net[name] = current
@@ -93,6 +95,8 @@ def segmentation(image, keep_prob):
         b6 = utils.bias_variable([4096], name="b6")
         conv6 = utils.conv2d_basic(pool5, W6, b6)
         relu6 = tf.nn.relu(conv6, name="relu6")
+        if FLAGS.debug:
+            utils.add_activation_summary(relu6)
         # 随机去掉一些神经元防止过拟合
         relu_dropout6 = tf.nn.dropout(relu6, keep_prob=keep_prob)
 
@@ -100,7 +104,8 @@ def segmentation(image, keep_prob):
         b7 = utils.bias_variable([4096], name="b7")
         conv7 = utils.conv2d_basic(relu_dropout6, W7, b7)
         relu7 = tf.nn.relu(conv7, name="relu7")
-
+        if FLAGS.debug:
+            utils.add_activation_summary(relu7)
         relu_dropout7 = tf.nn.dropout(relu7, keep_prob=keep_prob)
 
         W8 = utils.weight_variable([1, 1, 4096, NUM_OF_CLASSESS], name="W8")
@@ -124,12 +129,12 @@ def segmentation(image, keep_prob):
         shape = tf.shape(image)
         deconv_shape3 = tf.stack([shape[0], shape[1], shape[2], NUM_OF_CLASSESS])
         W_t3 = utils.weight_variable([16, 16, NUM_OF_CLASSESS, deconv_shape2[3].value], name="W_t3")
-        b_t3 = utils.bias_variable([NUM_OF_CLASSESS], name="b_t3")
-        conv_t3 = utils.conv2d_transpose_strided(fuse_2, W_t3, b_t3, output_shape=deconv_shape3, stride=8)
+        b_t3 = utils.bias_variable([NUM_OF_CLASSESS], name = "b_t3")
+        conv_t3 = utils.conv2d_transpose_strided(fuse_2, W_t3, b_t3, output_shape = deconv_shape3, stride = 8)
         # 预测结果层
-        annotation_pred = tf.argmax(conv_t3, dimension=3, name="prediction")
+        annotation_pred = tf.argmax(conv_t3, dimension = 3, name = "prediction")
 
-    return tf.expand_dims(annotation_pred, dim=3), conv_t3
+    return tf.expand_dims(annotation_pred, dim = 3), conv_t3
 
 
 def train(loss_val, var_list):
@@ -143,27 +148,34 @@ def train(loss_val, var_list):
     # 采用Adam算法的优化器
     optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
     # 以下可以合并成一步minimize
-    grads = optimizer.compute_gradients(loss_val, var_list=var_list)
+    grads = optimizer.compute_gradients(loss_val, var_list = var_list)
+    if FLAGS.debug:
+        # print(len(var_list))
+        for grad, var in grads:
+            utils.add_gradient_summary(grad, var)
     return optimizer.apply_gradients(grads)
 
 
 def main(argv = None):
     """
-    tensorflow 中的app.run会先解析flag，然后执行main函数
+    tensorflow 中的app.run会先解析命令行参数flag，然后执行main函数
     """
+    # 定义存放图像，标签和过拟合的数据结构
     keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
     image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
     annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
 
-    pred_annotation, logits = inference(image, keep_probability)
-    tf.summary.image("input_image", image, max_outputs=2)
-    tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=2)
-    tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=2)
+    pred_annotation, logits = segmentation(image, keep_probability)
+    # 添加监控信息，可以通过tensorboard查看
+    tf.summary.image("input_image", image, max_outputs = 2)
+    tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs = 2)
+    tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs = 2)
     loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                                           labels=tf.squeeze(annotation, squeeze_dims=[3]),
                                                                           name="entropy")))
-    tf.summary.scalar("entropy", loss)
 
+    tf.summary.scalar("entropy", loss)
+    # 获取在训练中的变量列表
     trainable_var = tf.trainable_variables()
     if FLAGS.debug:
         for var in trainable_var:
