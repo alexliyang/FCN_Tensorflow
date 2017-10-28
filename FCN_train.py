@@ -139,7 +139,7 @@ def segmentation(image, keep_prob):
 
 def train(loss_val, var_list):
     """
-    定义采用那种算法的优化器
+    定义采用那种算法的优化器，然后计算loss函数的梯度值，并加入到summary中
     Parameters
     ----------
         loss_val: 计算的loss值
@@ -170,6 +170,7 @@ def main(argv = None):
     tf.summary.image("input_image", image, max_outputs = 2)
     tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs = 2)
     tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs = 2)
+    # 还没看懂loss函数是怎么计算的，reduce_mean是求平均值，squeeze为去掉维度是1
     loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                                           labels=tf.squeeze(annotation, squeeze_dims=[3]),
                                                                           name="entropy")))

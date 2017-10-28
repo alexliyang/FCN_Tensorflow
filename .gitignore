@@ -8,7 +8,8 @@
 .settings/
 .classpath
 .project
-.idea
+.idea/
 / __pycache__
 **/*.pyc_
 imagenet-vgg-verydeep-19.mat
+.ipynb_checkpoints/
